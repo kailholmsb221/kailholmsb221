@@ -1,6 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 from tkcalendar import Calendar
 
 # Окно регистрации
@@ -81,34 +80,99 @@ class TeacherCalendarWindow(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Календарь уроков")
-        self.geometry("600x500")
+        self.geometry("900x600")
 
+        # Заголовок
         self.label = tk.Label(self, text="Календарь уроков", font=("Arial", 16))
         self.label.pack(pady=10)
 
-        self.calendar = Calendar(self, selectmode="day", year=2024, month=1, day=1)
-        self.calendar.pack(pady=20)
+        self.calendar = Calendar(self, selectmode="day", year=2024, month=12, day=1)
+        self.calendar.pack(pady=10, fill=tk.X)
 
-        self.lesson_label = tk.Label(self, text="Введите название урока", font=("Arial", 12))
-        self.lesson_label.pack(pady=5)
-        
-        self.lesson_entry = tk.Entry(self, width=30)
-        self.lesson_entry.pack(pady=5)
-        
-        self.add_lesson_button = tk.Button(self, text="Добавить урок", command=self.add_lesson)
-        self.add_lesson_button.pack(pady=10)
-        
-        self.lessons_listbox = tk.Listbox(self, width=50, height=10)
-        self.lessons_listbox.pack(pady=10)
+        self.control_frame = tk.Frame(self)
+        self.control_frame.pack(pady=10)
+
+        # Поля для добавления урока
+        self.lesson_name_label = tk.Label(self.control_frame, text="Название урока:")
+        self.lesson_name_label.grid(row=0, column=0, padx=5)
+        self.lesson_name_entry = tk.Entry(self.control_frame)
+        self.lesson_name_entry.grid(row=0, column=1, padx=5)
+
+        self.time_label = tk.Label(self.control_frame, text="Время (часы:мин):")
+        self.time_label.grid(row=1, column=0, padx=5)
+        self.time_entry = tk.Entry(self.control_frame)
+        self.time_entry.grid(row=1, column=1, padx=5)
+
+        self.class_label = tk.Label(self.control_frame, text="Класс:")
+        self.class_label.grid(row=2, column=0, padx=5)
+        self.class_entry = tk.Entry(self.control_frame)
+        self.class_entry.grid(row=2, column=1, padx=5)
+
+        self.teacher_label = tk.Label(self.control_frame, text="Имя учителя:")
+        self.teacher_label.grid(row=3, column=0, padx=5)
+        self.teacher_entry = tk.Entry(self.control_frame)
+        self.teacher_entry.grid(row=3, column=1, padx=5)
+
+        # Кнопка добавления урока
+        self.add_button = tk.Button(self.control_frame, text="Добавить урок", command=self.add_lesson)
+        self.add_button.grid(row=4, column=0, columnspan=2, pady=10)
+
+        # Список уроков по дате
+        self.lessons = {}
+
+        # Кнопка для отображения уроков
+        self.show_button = tk.Button(self, text="Показать уроки на выбранную дату", command=self.show_lessons)
+        self.show_button.pack(pady=10)
+
+        # Список уроков
+        self.lesson_listbox = tk.Listbox(self, width=80, height=10)
+        self.lesson_listbox.pack(pady=10)
 
     def add_lesson(self):
-        selected_date = self.calendar.get_date()
-        lesson_name = self.lesson_entry.get()
-        if lesson_name:
-            self.lessons_listbox.insert(tk.END, f"{selected_date}: {lesson_name}")
-            self.lesson_entry.delete(0, tk.END)
+        """Добавить урок в календарь."""
+        date = self.calendar.get_date()
+        lesson_name = self.lesson_name_entry.get()
+        time = self.time_entry.get()
+        class_name = self.class_entry.get()
+        teacher_name = self.teacher_entry.get()
+
+        if not lesson_name or not time or not class_name or not teacher_name:
+            messagebox.showerror("Ошибка", "Заполните все поля!")
+            return
+
+        lesson_info = {
+            "Название": lesson_name,
+            "Время": time,
+            "Класс": class_name,
+            "Учитель": teacher_name
+        }
+
+        if date not in self.lessons:
+            self.lessons[date] = []
+
+        self.lessons[date].append(lesson_info)
+        messagebox.showinfo("Успех", f"Урок '{lesson_name}' добавлен на {date}.")
+        self.clear_inputs()
+
+    def clear_inputs(self):
+        """Очистить поля ввода."""
+        self.lesson_name_entry.delete(0, tk.END)
+        self.time_entry.delete(0, tk.END)
+        self.class_entry.delete(0, tk.END)
+        self.teacher_entry.delete(0, tk.END)
+
+    def show_lessons(self):
+        """Отобразить уроки на выбранную дату."""
+        date = self.calendar.get_date()
+        self.lesson_listbox.delete(0, tk.END)
+
+        if date not in self.lessons or not self.lessons[date]:
+            self.lesson_listbox.insert(tk.END, "Уроков на выбранную дату нет.")
         else:
-            messagebox.showerror("Ошибка", "Введите название урока!")
+            for lesson in self.lessons[date]:
+                lesson_text = (f"{lesson['Время']} - {lesson['Название']} | "
+                               f"Класс: {lesson['Класс']} | Учитель: {lesson['Учитель']}")
+                self.lesson_listbox.insert(tk.END, lesson_text)
 
 
 # Окно выбора предметов
