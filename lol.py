@@ -1,182 +1,372 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from tkcalendar import Calendar
+import re
 
-
-class MainApplication(tk.Tk):
+class Application(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Программа")
+        self.title("Образовательная Система")
         self.geometry("800x600")
-        self.current_user = {"role": None, "subject": None}
 
-        # Создание вкладок
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True)
+        # Контейнер для всех фреймов
+        self.container = tk.Frame(self)
+        self.container.pack(fill="both", expand=True)
 
-        # Вкладка для регистрации
-        self.registration_frame = tk.Frame(self.notebook)
-        self.create_registration_frame()
-        self.notebook.add(self.registration_frame, text="Регистрация")
+        # Словарь для хранения фреймов
+        self.frames = {}
 
-        # Вкладка для панели учителя
-        self.teacher_frame = tk.Frame(self.notebook)
-        self.create_teacher_dashboard()
-        self.notebook.add(self.teacher_frame, text="Панель учителя")
+        # Текущий пользователь
+        self.current_user = None  # Будет хранить словарь с информацией о пользователе
 
-        # Вкладка для календаря
-        self.calendar_frame = tk.Frame(self.notebook)
-        self.create_shared_calendar()
-        self.notebook.add(self.calendar_frame, text="Общий календарь")
+        # Инициализация всех фреймов
+        for F in (LoginFrame, RegistrationFrame, DashboardFrame, CalendarFrame, SubjectSelectionFrame, SubjectFrame):
+            frame = F(parent=self.container, controller=self)
+            self.frames[F] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
 
-        # Установка начальной вкладки
-        self.notebook.select(self.registration_frame)
+        # Показать начальный фрейм
+        self.show_frame(LoginFrame)
 
-        # Уроки по пользователям
-        self.lessons = {}
+    def show_frame(self, cont, **kwargs):
+        frame = self.frames[cont]
+        if cont == SubjectFrame and 'subject' in kwargs:
+            frame.set_subject(kwargs['subject'])
+        elif cont == DashboardFrame:
+            frame.update_buttons()  # Обновить кнопки в зависимости от роли
+        frame.tkraise()
 
-    def create_registration_frame(self):
-        role_label = tk.Label(self.registration_frame, text="Выберите роль", font=("Arial", 12))
-        role_label.pack(pady=10)
+class PhoneEntry(tk.Entry):
+    def __init__(self, master=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.var = tk.StringVar()
+        self.var.trace_add("write", self.format_phone)
+        self.configure(textvariable=self.var)
+        self.max_length = 16  # Максимальная длина форматированного номера
 
-        self.role_var = tk.StringVar(value="Учитель")
-        role_menu = ttk.Combobox(self.registration_frame, textvariable=self.role_var, state="readonly")
-        role_menu['values'] = ["Учитель", "Ученик", "Родитель"]
-        role_menu.pack(pady=5)
+    def format_phone(self, *args):
+        # Удаляем все нецифровые символы
+        value = re.sub(r"\D", "", self.var.get())
+        formatted = "+7 "
 
-        login_label = tk.Label(self.registration_frame, text="Логин", font=("Arial", 12))
-        login_label.pack(pady=10)
-        self.login_entry = tk.Entry(self.registration_frame, width=30)
+        # Форматируем номер по шаблону
+        if len(value) > 1:
+            formatted += value[1:4] + " "  # Код оператора
+        if len(value) > 4:
+            formatted += value[4:7] + " "  # Первые три цифры номера
+        if len(value) > 7:
+            formatted += value[7:9] + " "  # Следующие две цифры номера
+        if len(value) > 9:
+            formatted += value[9:11]       # Последние две цифры номера
+
+        # Обрезаем лишние символы
+        if len(formatted) > self.max_length:
+            formatted = formatted[:self.max_length]
+
+        # Обновляем поле ввода
+        self.var.set(formatted)
+
+class LoginFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.configure(padx=20, pady=20)
+
+        self.title_label = tk.Label(self, text="Вход", font=("Arial", 16))
+        self.title_label.pack(pady=10)
+
+        # Логин (почта, ИИН или номер телефона)
+        self.login_label = tk.Label(self, text="Введите почту, ИИН или номер телефона", font=("Arial", 12))
+        self.login_label.pack(pady=5)
+        self.login_entry = tk.Entry(self, width=30)
         self.login_entry.pack(pady=5)
 
-        password_label = tk.Label(self.registration_frame, text="Пароль", font=("Arial", 12))
-        password_label.pack(pady=10)
-        self.password_entry = tk.Entry(self.registration_frame, width=30, show="*")
+        # Пароль
+        self.password_label = tk.Label(self, text="Пароль", font=("Arial", 12))
+        self.password_label.pack(pady=5)
+        self.password_entry = tk.Entry(self, width=30, show="*")
         self.password_entry.pack(pady=5)
 
-        subject_label = tk.Label(self.registration_frame, text="Предмет (только для учителей)", font=("Arial", 12))
-        subject_label.pack(pady=10)
-        self.subject_entry = tk.Entry(self.registration_frame, width=30)
-        self.subject_entry.pack(pady=5)
+        # Кнопка входа
+        self.login_button = tk.Button(self, text="Войти", command=self.login)
+        self.login_button.pack(pady=20)
 
-        register_button = tk.Button(self.registration_frame, text="Войти", command=self.login)
-        register_button.pack(pady=20)
+        # Ссылка на регистрацию
+        self.register_label = tk.Label(self, text="Регистрация", font=("Arial", 10), fg="blue", cursor="hand2")
+        self.register_label.pack()
+        self.register_label.bind("<Button-1>", lambda e: controller.show_frame(RegistrationFrame))
 
     def login(self):
-        role = self.role_var.get()
-        login = self.login_entry.get()
+        login = self.login_entry.get().strip()
         password = self.password_entry.get()
-        subject = self.subject_entry.get()
 
         if not login or not password:
             messagebox.showerror("Ошибка", "Введите логин и пароль!")
             return
 
-        self.current_user["role"] = role
-        self.current_user["subject"] = subject if role == "Учитель" else None
+        # Проверка данных (упрощенно, здесь можно добавить логику проверки с базой данных)
+        if self.controller.current_user and (
+            login == self.controller.current_user.get("email") or
+            login == self.controller.current_user.get("iin") or
+            login == self.controller.current_user.get("phone")
+        ) and password == self.controller.current_user.get("password"):
+            messagebox.showinfo("Успех", f"Добро пожаловать, {self.controller.current_user['fio']}!")
+            self.controller.show_frame(DashboardFrame)
+        else:
+            messagebox.showerror("Ошибка", "Неверный логин или пароль!")
 
-        messagebox.showinfo("Успех", f"Добро пожаловать, {login}!")
-        self.notebook.hide(self.registration_frame)
-        self.notebook.select(self.teacher_frame if role == "Учитель" else self.calendar_frame)
+class RegistrationFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.configure(padx=20, pady=20)
 
-    def create_teacher_dashboard(self):
-        label = tk.Label(self.teacher_frame, text="Панель учителя", font=("Arial", 14))
-        label.pack(pady=20)
+        self.title_label = tk.Label(self, text="Регистрация", font=("Arial", 16))
+        self.title_label.pack(pady=10)
 
-        # Кнопки
-        my_lessons_button = tk.Button(self.teacher_frame, text="Мои уроки", command=self.show_my_lessons)
-        my_lessons_button.pack(pady=10)
+        # ФИО
+        self.fio_label = tk.Label(self, text="ФИО", font=("Arial", 12))
+        self.fio_label.pack(pady=5)
+        self.fio_entry = tk.Entry(self, width=30)
+        self.fio_entry.pack(pady=5)
 
-        calendar_button = tk.Button(self.teacher_frame, text="Общий календарь", command=lambda: self.notebook.select(self.calendar_frame))
-        calendar_button.pack(pady=10)
+        # ИИН
+        self.iin_label = tk.Label(self, text="ИИН", font=("Arial", 12))
+        self.iin_label.pack(pady=5)
+        self.iin_entry = tk.Entry(self, width=30)
+        self.iin_entry.pack(pady=5)
 
-        self.my_lessons_listbox = tk.Listbox(self.teacher_frame, width=80, height=10)
-        self.my_lessons_listbox.pack(pady=10)
+        # Номер телефона
+        self.phone_label = tk.Label(self, text="Номер телефона", font=("Arial", 12))
+        self.phone_label.pack(pady=5)
+        self.phone_entry = PhoneEntry(self, font=("Arial", 14), width=20)
+        self.phone_entry.pack(pady=5)
 
-        # Оценка и комментарий
-        control_frame = tk.Frame(self.teacher_frame)
-        control_frame.pack(pady=10)
+        # Почта
+        self.email_label = tk.Label(self, text="Электронная почта", font=("Arial", 12))
+        self.email_label.pack(pady=5)
+        self.email_entry = tk.Entry(self, width=30)
+        self.email_entry.pack(pady=5)
 
-        self.comment_entry = tk.Entry(control_frame, width=40)
-        self.comment_entry.grid(row=0, column=0, padx=5)
-        self.comment_entry.insert(0, "Комментарий")
+        # Пароль
+        self.password_label = tk.Label(self, text="Пароль", font=("Arial", 12))
+        self.password_label.pack(pady=5)
+        self.password_entry = tk.Entry(self, width=30, show="*")
+        self.password_entry.pack(pady=5)
 
-        self.grade_entry = tk.Entry(control_frame, width=10)
+        # Роль
+        self.role_label = tk.Label(self, text="Выберите роль", font=("Arial", 12))
+        self.role_label.pack(pady=5)
+
+        self.role_var = tk.StringVar(value="Учитель")
+        self.role_menu = ttk.Combobox(self, textvariable=self.role_var, state="readonly")
+        self.role_menu['values'] = ["Учитель", "Ученик", "Родитель"]
+        self.role_menu.pack(pady=5)
+
+        # Кнопка регистрации
+        self.register_button = tk.Button(self, text="Зарегистрироваться", command=self.register)
+        self.register_button.pack(pady=20)
+
+    def register(self):
+        fio = self.fio_entry.get().strip()
+        iin = self.iin_entry.get().strip()
+        phone = self.phone_entry.get().strip()
+        email = self.email_entry.get().strip()
+        password = self.password_entry.get()
+        role = self.role_var.get()
+
+        # Валидация ФИО
+        if not fio:
+            messagebox.showerror("Ошибка", "Введите ФИО!")
+            return
+
+        # Валидация ИИН
+        if not iin.isdigit() or len(iin) != 12:
+            messagebox.showerror("Ошибка", "ИИН должен состоять из 12 цифр!")
+            return
+
+        # Валидация номера телефона
+        phone_pattern = r'^\+7 \d{3} \d{3} \d{2} \d{2}$'
+        if not re.match(phone_pattern, phone):
+            messagebox.showerror("Ошибка", "Номер телефона должен быть в формате +7 XXX XXX XX XX!")
+            return
+
+        # Валидация почты
+        if '@' not in email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            messagebox.showerror("Ошибка", "Введите корректную электронную почту!")
+            return
+
+        # Валидация пароля
+        if len(password) < 8:
+            messagebox.showerror("Ошибка", "Пароль должен быть не менее 8 символов!")
+            return
+
+        # Если все проверки пройдены, сохраняем пользователя
+        user_info = {
+            "fio": fio,
+            "iin": iin,
+            "phone": phone,
+            "email": email,
+            "password": password,  # В реальном приложении не храните пароли в открытом виде!
+            "role": role
+        }
+        self.controller.current_user = user_info
+        messagebox.showinfo("Успех", f"Добро пожаловать, {fio}!")
+        self.controller.show_frame(LoginFrame)
+
+class DashboardFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.configure(padx=20, pady=20)
+
+        self.label = tk.Label(self, text="Панель пользователя", font=("Arial", 16))
+        self.label.pack(pady=10)
+
+        # Кнопка для работы с календарём
+        self.calendar_button = tk.Button(self, text="Календарь уроков", command=lambda: controller.show_frame(CalendarFrame))
+        self.calendar_button.pack(pady=10)
+
+        # Кнопка для выбора предмета
+        self.subjects_button = tk.Button(self, text="Работа с предметами", command=lambda: controller.show_frame(SubjectSelectionFrame))
+        self.subjects_button.pack(pady=10)
+
+        # Кнопка выхода
+        self.logout_button = tk.Button(self, text="Выйти", command=self.logout)
+        self.logout_button.pack(pady=10)
+
+    def update_buttons(self):
+        user = self.controller.current_user
+        if user and user.get("role") == "Учитель":
+            self.calendar_button.config(state="normal")
+        else:
+            self.calendar_button.config(state="disabled")
+
+    def logout(self):
+        self.controller.current_user = None
+        messagebox.showinfo("Вышли", "Вы успешно вышли из системы.")
+        self.controller.show_frame(LoginFrame)
+
+class CalendarFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.configure(padx=20, pady=20)
+
+        self.label = tk.Label(self, text="Календарь уроков", font=("Arial", 16))
+        self.label.pack(pady=10)
+
+        self.calendar = Calendar(self, selectmode="day", year=2024, month=1, day=1)
+        self.calendar.pack(pady=20)
+
+        self.lesson_label = tk.Label(self, text="Введите название урока", font=("Arial", 12))
+        self.lesson_label.pack(pady=5)
+
+        self.lesson_entry = tk.Entry(self, width=30)
+        self.lesson_entry.pack(pady=5)
+
+        self.add_lesson_button = tk.Button(self, text="Добавить урок", command=self.add_lesson)
+        self.add_lesson_button.pack(pady=10)
+
+        self.lessons_listbox = tk.Listbox(self, width=50, height=10)
+        self.lessons_listbox.pack(pady=10)
+
+        # Кнопка назад
+        self.back_button = tk.Button(self, text="Назад", command=lambda: controller.show_frame(DashboardFrame))
+        self.back_button.pack(pady=10)
+
+    def add_lesson(self):
+        selected_date = self.calendar.get_date()
+        lesson_name = self.lesson_entry.get().strip()
+        if lesson_name:
+            self.lessons_listbox.insert(tk.END, f"{selected_date}: {lesson_name}")
+            self.lesson_entry.delete(0, tk.END)
+        else:
+            messagebox.showerror("Ошибка", "Введите название урока!")
+
+class SubjectSelectionFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.configure(padx=20, pady=20)
+
+        self.label = tk.Label(self, text="Выберите предмет", font=("Arial", 16))
+        self.label.pack(pady=10)
+
+        self.subjects = [
+            "Алгебра", "Геометрия", "Русский язык", "Русская литература",
+            "Химия", "Биология", "История Казахстана", "Всемирная история",
+            "География", "Казахский язык", "Английский язык"
+        ]
+
+        # Создание кнопок для каждого предмета
+        for subject in self.subjects:
+            button = tk.Button(self, text=subject, width=30, command=lambda s=subject: controller.show_frame(SubjectFrame, subject=s))
+            button.pack(pady=5)
+
+        # Кнопка назад
+        self.back_button = tk.Button(self, text="Назад", command=lambda: controller.show_frame(DashboardFrame))
+        self.back_button.pack(pady=10)
+
+class SubjectFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.subject = ""
+        self.configure(padx=20, pady=20)
+
+        self.label = tk.Label(self, text="", font=("Arial", 16))
+        self.label.pack(pady=10)
+
+        self.tree = ttk.Treeview(self, columns=("name", "grade", "comment"), show="headings")
+        self.tree.heading("name", text="Имя ученика")
+        self.tree.heading("grade", text="Оценка")
+        self.tree.heading("comment", text="Комментарий")
+        self.tree.pack(fill=tk.BOTH, expand=True, pady=10)
+
+        self.add_frame = tk.Frame(self)
+        self.add_frame.pack(pady=10)
+
+        self.name_entry = tk.Entry(self.add_frame, width=20)
+        self.name_entry.grid(row=0, column=0, padx=5)
+        self.name_entry.insert(0, "Имя ученика")
+
+        self.grade_entry = tk.Entry(self.add_frame, width=10)
         self.grade_entry.grid(row=0, column=1, padx=5)
         self.grade_entry.insert(0, "Оценка")
 
-        self.add_comment_button = tk.Button(control_frame, text="Добавить", command=self.add_comment)
-        self.add_comment_button.grid(row=0, column=2, padx=5)
+        self.comment_entry = tk.Entry(self.add_frame, width=20)
+        self.comment_entry.grid(row=0, column=2, padx=5)
+        self.comment_entry.insert(0, "Комментарий")
 
-    def show_my_lessons(self):
-        """Показать уроки текущего учителя."""
-        subject = self.current_user.get("subject")
-        if not subject:
-            messagebox.showerror("Ошибка", "Вы не учитель!")
-            return
+        self.add_button = tk.Button(self.add_frame, text="Добавить", command=self.add_entry)
+        self.add_button.grid(row=0, column=3, padx=5)
 
-        self.my_lessons_listbox.delete(0, tk.END)
-        if subject in self.lessons:
-            for lesson in self.lessons[subject]:
-                self.my_lessons_listbox.insert(tk.END, f"{lesson['Дата']} - {lesson['Время']} - {lesson['Название']}")
+        # Кнопка назад
+        self.back_button = tk.Button(self, text="Назад", command=lambda: controller.show_frame(SubjectSelectionFrame))
+        self.back_button.pack(pady=10)
+
+    def set_subject(self, subject):
+        self.subject = subject
+        self.label.config(text=f"Предмет: {self.subject}")
+        # Очистка текущих данных в дереве при смене предмета
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        # Можно добавить загрузку данных из базы данных или другого источника здесь
+
+    def add_entry(self):
+        name = self.name_entry.get().strip()
+        grade = self.grade_entry.get().strip()
+        comment = self.comment_entry.get().strip()
+        if name and grade:
+            self.tree.insert("", "end", values=(name, grade, comment))
+            self.name_entry.delete(0, tk.END)
+            self.grade_entry.delete(0, tk.END)
+            self.comment_entry.delete(0, tk.END)
         else:
-            self.my_lessons_listbox.insert(tk.END, "Нет уроков.")
+            messagebox.showerror("Ошибка", "Введите имя ученика и оценку!")
 
-    def add_comment(self):
-        """Добавить комментарий и оценку к уроку."""
-        selected = self.my_lessons_listbox.curselection()
-        if not selected:
-            messagebox.showerror("Ошибка", "Выберите урок!")
-            return
-
-        comment = self.comment_entry.get()
-        grade = self.grade_entry.get()
-
-        if not comment or not grade:
-            messagebox.showerror("Ошибка", "Заполните все поля!")
-            return
-
-        messagebox.showinfo("Успех", f"Комментарий: {comment}, Оценка: {grade}")
-
-    def create_shared_calendar(self):
-        label = tk.Label(self.calendar_frame, text="Общий календарь уроков", font=("Arial", 14))
-        label.pack(pady=20)
-
-        self.calendar = Calendar(self.calendar_frame, selectmode="day", year=2024, month=12, day=1)
-        self.calendar.pack(pady=10)
-
-        self.lesson_listbox = tk.Listbox(self.calendar_frame, width=80, height=10)
-        self.lesson_listbox.pack(pady=10)
-
-        show_button = tk.Button(self.calendar_frame, text="Показать уроки на дату", command=self.show_lessons)
-        show_button.pack(pady=10)
-
-    def show_lessons(self):
-        """Показать уроки на выбранную дату."""
-        date = self.calendar.get_date()
-        self.lesson_listbox.delete(0, tk.END)
-
-        found = False
-        for subject, lessons in self.lessons.items():
-            for lesson in lessons:
-                if lesson["Дата"] == date:
-                    found = True
-                    self.lesson_listbox.insert(tk.END, f"{lesson['Время']} - {lesson['Название']} ({subject})")
-
-        if not found:
-            self.lesson_listbox.insert(tk.END, "Уроков на эту дату нет.")
-
-    def add_lesson(self, date, time, name, subject):
-        """Добавить урок в календарь."""
-        if subject not in self.lessons:
-            self.lessons[subject] = []
-
-        self.lessons[subject].append({"Дата": date, "Время": time, "Название": name})
-
-
+# Запуск приложения
 if __name__ == "__main__":
-    app = MainApplication()
-    # Пример добавления уроков
-    app.add_lesson("2024-12-01", "10:00", "Биология 101", "Биология")
-    app.add_lesson("2024-12-01", "12:00", "Химия 202", "Химия")
-    app.mainloop()
+    app = Application()
+    app.mainloop()  
